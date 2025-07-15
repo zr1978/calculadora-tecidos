@@ -1,74 +1,96 @@
 <!DOCTYPE html>
-<html lang="pt-PT">
+<html lang="pt">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>Calculadora de Custo por Metro</title>
   <style>
-    body { font-family: sans-serif; max-width: 600px; margin: 40px auto; }
-    label { display: block; margin-top: 12px; }
-    input { width: 100%; padding: 6px; margin-top: 4px; }
-    button { margin-top: 20px; padding: 10px; }
-    #resultado { margin-top: 20px; font-weight: bold; }
+    body { font-family: sans-serif; max-width: 600px; margin: auto; padding: 2rem; }
+    label, input { display: block; margin-top: 1rem; width: 100%; box-sizing: border-box; }
+    input[type=number], input[type=date] { padding: 0.5rem; font-size: 1rem; }
+    button { margin-top: 2rem; padding: 0.75rem; background: black; color: white; border: none; cursor: pointer; font-size: 1rem; }
+    #resultado { margin-top: 2rem; font-size: 1.2rem; font-weight: bold; }
   </style>
 </head>
 <body>
-  <h1>Calculadora de Preço por Metro</h1>
+  <h1>Calculadora de Custo por Metro</h1>
 
-  <label>Preço por Yarda (USD):
-    <input type="number" step="0.01" id="preco" value="6.15">
+  <label>Preço por yard (USD):
+    <input type="number" id="precoYard" step="0.01" min="0" />
   </label>
 
-  <label>Quantidade (em Yardas):
-    <input type="number" step="0.1" id="yardas" value="75">
+  <label>Yards por bolt:
+    <input type="number" id="yardsBolt" step="0.01" min="0" value="15" />
   </label>
 
-  <label>Peso total (em kg):
-    <input type="number" step="0.01" id="peso" value="13.61">
+  <label>Número de bolts:
+    <input type="number" id="numBolts" min="1" />
   </label>
 
-  <label>Data (AAAA-MM-DD):
-    <input type="date" id="data" value="2025-07-15">
+  <label>Data (para taxa de câmbio):
+    <input type="date" id="dataCambio" />
   </label>
 
   <button onclick="calcular()">Calcular</button>
 
-  <div id="resultado">Aguardando cálculo…</div>
+  <div id="resultado"></div>
 
   <script>
-    async function calcular() {
-      const precoUSD = parseFloat(document.getElementById('preco').value)
-      const yardas = parseFloat(document.getElementById('yardas').value)
-      const pesoKg = parseFloat(document.getElementById('peso').value)
-      const data = document.getElementById('data').value
-
-      const largura = 1.10 // metros
-      const taxaFretePorLb = 4.38
-      const taxaServico = 0.085
-
-      // Conversões
-      const metrosTotais = yardas * 0.9144
-      const libras = pesoKg * 2.20462
-      const custoFrete = libras * taxaFretePorLb
-      const custoMaterialUSD = precoUSD * yardas
-      const taxasServicoUSD = custoMaterialUSD * taxaServico
-      const totalUSD = custoMaterialUSD + custoFrete + taxasServicoUSD
-
-      let taxaCambio = 0
-
+    async function obterCambio(data) {
       try {
-        const resposta = await fetch(`https://misty-resonance-7bf4.digitaldois-2df.workers.dev/?date=${data}`)
-        const dados = await resposta.json()
-        taxaCambio = dados.rate
+        const res = await fetch(`https://api.frankfurter.app/${data}?from=USD&to=EUR`);
+        const dados = await res.json();
+        if (!dados.rates || !dados.rates.EUR) throw new Error();
+        return dados.rates.EUR;
       } catch {
-        document.getElementById('resultado').innerText = 'Erro ao obter taxa de câmbio.'
-        return
+        throw new Error('Erro ao obter taxa de câmbio.');
+      }
+    }
+
+    async function calcular() {
+      const precoYard = parseFloat(document.getElementById('precoYard').value);
+      const yardsBolt = parseFloat(document.getElementById('yardsBolt').value);
+      const numBolts = parseInt(document.getElementById('numBolts').value);
+      const dataCambio = document.getElementById('dataCambio').value;
+
+      if (isNaN(precoYard) || precoYard <= 0 ||
+          isNaN(yardsBolt) || yardsBolt <= 0 ||
+          isNaN(numBolts) || numBolts <= 0 ||
+          !dataCambio) {
+        document.getElementById('resultado').innerText = 'Por favor preencha todos os campos corretamente.';
+        return;
       }
 
-      const totalEUR = totalUSD * taxaCambio
-      const custoPorMetro = totalEUR / metrosTotais
+      const pesoPadraoKgPorBolt = 2.7; // para 15 yards
+      const larguraM = 1.10; // 110 cm
+      const fretePorLb = 4.38;
+      const taxaServico = 0.085;
+
+      // Peso ajustado ao yards por bolt
+      const pesoKgPorBolt = pesoPadraoKgPorBolt * (yardsBolt / 15);
+      const totalYards = yardsBolt * numBolts;
+
+      const pesoTotalKg = pesoKgPorBolt * numBolts;
+      const pesoTotalLb = pesoTotalKg * 2.20462;
+
+      const custoTecidosUSD = precoYard * totalYards;
+      const custoFreteUSD = pesoTotalLb * fretePorLb;
+      const custoServicoUSD = custoTecidosUSD * taxaServico;
+      const custoTotalUSD = custoTecidosUSD + custoFreteUSD + custoServicoUSD;
+
+      let taxaCambio;
+      try {
+        taxaCambio = await obterCambio(dataCambio);
+      } catch (e) {
+        document.getElementById('resultado').innerText = e.message;
+        return;
+      }
+
+      const custoTotalEUR = custoTotalUSD * taxaCambio;
+      const totalMetros = totalYards * 0.9144; // 1 yard = 0.9144 m
+      const precoPorMetroEUR = custoTotalEUR / totalMetros;
 
       document.getElementById('resultado').innerText =
-        `Custo estimado: €${custoPorMetro.toFixed(2)} por metro (à taxa de ${taxaCambio.toFixed(4)} em ${data})`
+        `Preço estimado por metro: ${precoPorMetroEUR.toFixed(2)} €`;
     }
   </script>
 </body>
