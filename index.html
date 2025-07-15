@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+  <meta charset="UTF-8" />
+  <title>Calculadora de Importação de Tecidos (com data de câmbio)</title>
+  <style>
+    body { font-family: sans-serif; max-width: 700px; margin: 2rem auto; padding: 1rem; }
+    label { display: block; margin-top: 1rem; }
+    input, select { width: 100%; padding: 0.5rem; margin-top: 0.25rem; }
+    button { margin-top: 1.5rem; padding: 0.75rem 1.5rem; font-size: 1rem; }
+    .resultado { margin-top: 2rem; font-weight: bold; }
+    hr { margin: 1.5rem 0; }
+  </style>
+</head>
+<body>
+  <h1>Calculadora de Importação de Tecidos</h1>
+
+  <label>
+    Preço por yard (USD):
+    <input type="number" step="0.01" id="precoUSD" value="6.15" />
+  </label>
+
+  <label>
+    Quantidade total (yards):
+    <input type="number" step="0.1" id="quantidadeYard" value="75" />
+  </label>
+
+  <label>
+    Data para taxa de câmbio (máx hoje):
+    <input type="date" id="dataCambio" max="" />
+  </label>
+
+  <label>
+    Peso médio por bolt (kg):
+    <input type="number" step="0.01" id="pesoBolt" value="2.72" />
+  </label>
+
+  <label>
+    Número de bolts:
+    <input type="number" step="1" id="numBolts" value="5" />
+  </label>
+
+  <label>
+    Preço do frete (USD por lb):
+    <input type="number" step="0.01" id="fretePorLb" value="4.38" />
+  </label>
+
+  <label>
+    Taxa de serviço (%):
+    <input type="number" step="0.01" id="taxaServico" value="8.5" />
+  </label>
+
+  <button onclick="obterCambio()">Obter taxa e calcular</button>
+
+  <p id="cambioInfo" style="font-size: 0.9rem; color: #555;"></p>
+
+  <div class="resultado" id="resultado"></div>
+
+  <script>
+    // Definir max data hoje no input
+    const dataInput = document.getElementById('dataCambio');
+    const hoje = new Date().toISOString().split('T')[0];
+    dataInput.max = hoje;
+    dataInput.value = hoje;
+
+    let taxaCambio = null;
+
+    function obterCambio() {
+      const data = document.getElementById('dataCambio').value;
+      fetch(`https://api.exchangerate.host/${data}?base=USD&symbols=EUR`)
+        .then(res => res.json())
+        .then(data => {
+          taxaCambio = data.rates.EUR;
+          document.getElementById('cambioInfo').innerText = `Taxa para ${data.date}: 1 USD = ${taxaCambio.toFixed(4)} EUR`;
+          calcular();
+        })
+        .catch(err => {
+          document.getElementById('cambioInfo').innerText = 'Erro ao obter taxa de câmbio.';
+          console.error(err);
+        });
+    }
+
+    function calcular() {
+      if (!taxaCambio) return;
+
+      const precoUSD = parseFloat(document.getElementById('precoUSD').value);
+      const yards = parseFloat(document.getElementById('quantidadeYard').value);
+      const cambio = taxaCambio;
+      const pesoPorBolt = parseFloat(document.getElementById('pesoBolt').value);
+      const numBolts = parseInt(document.getElementById('numBolts').value);
+      const fretePorLb = parseFloat(document.getElementById('fretePorLb').value);
+      const taxaServicoPerc = parseFloat(document.getElementById('taxaServico').value);
+
+      const metros = yards * 0.9144;
+      const precoUSDporMetro = precoUSD / 0.9144;
+      const precoEURporMetro = precoUSDporMetro * cambio;
+
+      const valorMercadoriaUSD = precoUSD * yards;
+      const valorMercadoriaEUR = valorMercadoriaUSD * cambio;
+
+      const pesoTotalKg = pesoPorBolt * numBolts;
+      const pesoTotalLb = pesoTotalKg * 2.20462;
+      const custoFreteUSD = pesoTotalLb * fretePorLb;
+      const custoFreteEUR = custoFreteUSD * cambio;
+
+      const taxaServicoUSD = valorMercadoriaUSD * (taxaServicoPerc / 100);
+      const taxaServicoEUR = taxaServicoUSD * cambio;
+
+      const totalEUR = valorMercadoriaEUR + custoFreteEUR + taxaServicoEUR;
+      const precoFinalPorMetro = totalEUR / metros;
+
+      document.getElementById('resultado').innerHTML = `
+        <p><strong>Preço final estimado por metro: €${precoFinalPorMetro.toFixed(2)}</strong></p>
+        <hr>
+        <p>Quantidade: ${metros.toFixed(2)} metros</p>
+        <p>Preço base por metro (sem custos): €${precoEURporMetro.toFixed(2)}</p>
+        <p>Valor da mercadoria: $${valorMercadoriaUSD.toFixed(2)} / €${valorMercadoriaEUR.toFixed(2)}</p>
+        <p>Peso total: ${pesoTotalKg.toFixed(2)} kg (${pesoTotalLb.toFixed(2)} lb)</p>
+        <p>Custo do frete: $${custoFreteUSD.toFixed(2)} / €${custoFreteEUR.toFixed(2)}</p>
+        <p>Taxa de serviço (${taxaServicoPerc.toFixed(2)}%): $${taxaServicoUSD.toFixed(2)} / €${taxaServicoEUR.toFixed(2)}</p>
+        <p><strong>Total estimado a pagar: €${totalEUR.toFixed(2)}</strong></p>
+      `;
+    }
+
+    // Obter taxa automática ao carregar a página
+    window.onload = () => obterCambio();
+  </script>
+</body>
+</html>
